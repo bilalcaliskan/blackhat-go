@@ -1,0 +1,19 @@
+DESIGNING THE PROJECT STRUCTURE:
+When building an API client, you should structure it so that the function calls and logic stand alone. This
+allows you to reuse the implementation as a library in other projects. That way, you won’t have to reinvent
+the wheel in the future. Building for reusability slightly changes a project’s structure. For the Shodan
+example, here’s the project structure:
+    $ tree github.com/blackhat-go/bhg/ch-3/shodan
+    github.com/blackhat-go/bhg/ch-3/shodan
+        |---cmd
+        |   |---shodan
+        |       |---main.go
+        |---shodan
+            |---api.go
+            |---host.go
+            |---shodan.go
+The main.go file defines package main and is used primarily as a consumer of the API you’ll build; in this case,
+you use it primarily to interact with your client implementation.
+The files in the shodan directory—api.go, host.go, and shodan.go—define package shodan, which contains the types
+and functions necessary for communication to and from Shodan. This package will become your stand-alone library
+that you can import into various projects.
