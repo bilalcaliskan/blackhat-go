@@ -1,11 +1,32 @@
 package main
 
+import (
+	"blackhat-go/ch3/shodan/shodan"
+	"fmt"
+	"log"
+	"os"
+)
+
 func main() {
-	/*
-		The Shodan URL is defined as a constant value in shodan/shodan.go, that way, you can easily access and reuse
-		it within your implementing functions. If Shodan ever changes the URL of its API, you’ll have to make the
-		change at only this one location in order to correct your entire codebase. Next, you define a Client struct,
-		used for maintaining your API token across requests. Finally, the code defines a New() helper function, taking
-		the API token as input and creating and returning an initialized Client instance.
-	*/
+	if len(os.Args) != 2 {
+		log.Fatalln("Usage: shodan searchterm")
+	}
+	apiKey := os.Getenv("SHODAN_API_KEY")
+	s := shodan.New(apiKey)
+	info, err := s.APIInfo()
+	if err != nil {
+		log.Panicln(err)
+	}
+	fmt.Printf(
+		"Query Credits: %d\nScan Credits:  %d\n\n",
+		info.QueryCredits,
+		info.ScanCredits)
+
+	hostSearch, err := s.HostSearch(os.Args[1])
+	if err != nil {
+		log.Panicln(err)
+	}
+	for _, host := range hostSearch.Matches {
+		fmt.Printf("%18s%8d\n", host.IPString, host.Port)
+	}
 }

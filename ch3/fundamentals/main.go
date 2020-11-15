@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -8,6 +9,11 @@ import (
 	"net/url"
 	"strings"
 )
+
+type Status struct {
+	Message string
+	Status  string
+}
 
 func main() {
 	/*
@@ -27,6 +33,7 @@ func main() {
 	*/
 
 
+
 	// Read and display response body
 	/*
 		Inspecting various components of the HTTP response is a crucial aspect of any HTTP-related task, like reading
@@ -42,6 +49,7 @@ func main() {
 	}
 	// Print HTTP Status
 	fmt.Println(resp.Status)
+	// Read and display response body
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Panicln(err)
@@ -58,12 +66,47 @@ func main() {
 	*/
 
 
+
+	// Parsing JSON Response as struct
+	/*
+		If you encounter a need to parse more structured data—and it’s likely that you will—you can read the response
+		body and decode it. This process of parsing structured data types is consistent across other encoding formats,
+		like XML or even binary representations. You begin the process by defining a struct to represent the expected
+		response data and then decoding the data into that struct. The details and actual implementation of parsing
+		other formats will be left up to you to determine.
+	*/
+	res, err := http.Post(
+		"http://IP:PORT/ping",
+		"application/json",
+		nil,
+	)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	var status Status
+	if err := json.NewDecoder(res.Body).Decode(&status); err != nil {
+		log.Fatalln(err)
+	}
+	defer res.Body.Close()
+	log.Printf("%s -> %s\n", status.Status, status.Message)
+
+
+
+
+
+
+
 	resp, err = http.Head("https://www.google.com/robots.txt")
 	if err != nil {
 		log.Panicln(err)
 	}
-	defer resp.Body.Close()
 	fmt.Println(resp.Status)
+	body, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Panicln(err.Error())
+	}
+	fmt.Println(string(body))
+	resp.Body.Close()
 
 	form := url.Values{}
 	form.Add("foo", "bar")
@@ -89,6 +132,9 @@ func main() {
 	defer resp.Body.Close()
 	fmt.Println(resp.Status)
 
+
+
+
 	/*
 		To generate a request with one of these verbs, you can use the NewRequest() function to create the Request
 		struct, which you’ll subsequently send using the Client function’s Do() method. We promise that it’s simpler
@@ -106,12 +152,12 @@ func main() {
 	resp, err = client.Do(req)
 	defer resp.Body.Close()
 	fmt.Println(resp.Status)
-
 	/*
 		The standard Go net/http library contains several functions that you can use to manipulate the request before
 		it’s sent to the server. You’ll learn some of the more relevant and applicable variants as you work through
 		practical examples throughout this chapter.
 	*/
+
 
 	req, err = http.NewRequest("PUT", "https://www.google.com/robots.txt", strings.NewReader(form.Encode()))
 	resp, err = client.Do(req)
