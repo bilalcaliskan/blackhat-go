@@ -316,3 +316,78 @@ receive the decoded response. The Login() and Logout() methods manipulate the to
 difference between method logic appears in the SessionList() method, where you define the response as a 
 `map[uint32]SessionListRes` ❻ and loop over that response to flatten the map ❽, setting the ID property on the struct 
 rather than maintaining a map of maps.
+
+Remember that the `session.list()` RPC function requires a valid authentication token, meaning you have to log in 
+before the `SessionList()` method call will succeed. Below function in [rpc/msf.go](rpc/msf.go) uses the Metasploit 
+receiver struct to access a token, which isn’t a valid value yet—it’s an empty string. Since the code you’re 
+developing here isn’t fully featured, you could just explicitly include a call to your `Login()` method from within the `SessionList()` 
+method, but for each additional authenticated method you implement, you’d have to check for the existence of a valid 
+authentication token and make an explicit call to `Login()`. This isn’t great coding practice because you’d spend a 
+lot of time repeating logic that you could write, say, as part of a bootstrapping process. 
+
+You’ve already implemented a function, `New()`, designed to be used for bootstrapping, so patch up that function to 
+see what a new implementation looks like when including authentication as part of the process(see [`New()` function on rpc/msf.go](rpc/msf.go)):
+```go
+func New(host, user, pass string) (*Metasploit, error)❶ {
+    msf := &Metasploit{
+        host: host,
+        user: user,
+        pass: pass,
+    }
+
+    if err := msf.Login()❷; err != nil {
+        return nil, err
+    }
+
+    return msf, nil
+}
+```
+The patched-up code now includes an error as part of the return value set ❶. This is to alert on possible 
+authentication failures. Also, added to the logic is an explicit call to the `Login()` method ❷. As long as 
+the Metasploit struct is instantiated using this `New()` function, your authenticated method calls will now 
+have access to a valid authentication token.
+
+### Creating a Utility Program
+Your last effort is to create the utility program that implements your shiny new library. Enter the below code snippet 
+into [client/main.go](client/main.go), run it, and watch the magic happen.
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+
+    "github.com/blackhat-go/bhg/ch-3/metasploit-minimal/rpc"
+)
+
+func main() {
+    host := os.Getenv("MSFHOST")
+    pass := os.Getenv("MSFPASS")
+    user := "msf"
+
+    if host == "" || pass == "" {
+        log.Fatalln("Missing required environment variable MSFHOST or MSFPASS")
+    }
+    msf, err := rpc.New(host, user, pass)❶
+    if err != nil {
+        log.Panicln(err)
+    }
+ ❷ defer msf.Logout()
+
+    sessions, err := msf.SessionList()❸
+    if err != nil {
+        log.Panicln(err)
+    }
+    fmt.Println("Sessions:")
+ ❹ for _, session := range sessions {
+        fmt.Printf("%5d  %s\n", session.ID, session.Info)
+    }
+}
+```
+First, bootstrap the RPC client and initialize a new Metasploit struct ❶. `Remember, you just updated this function 
+to perform authentication during initialization.` Next, ensure you do proper cleanup by issuing a deferred call 
+to the `Logout()` method ❷. This will run when the main function returns or exits. You then issue a call to the 
+`SessionList()` method ❸ and iterate over that response to list out the available Meterpreter sessions ❹.
+
+That was a lot of code, but fortunately, implementing other API calls should be substantially less work since 
+you’ll just be defining request and response types and building the library method to issue the remote call.

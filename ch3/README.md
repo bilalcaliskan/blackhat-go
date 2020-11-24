@@ -41,4 +41,8 @@ conventions for handling structured data prove extremely convenient when interac
 with HTTP APIs.
 
 
-For the coding exercises, check the subfolders in current directory.
+For the coding exercises, check the subfolders in current directory with the following order:
+  - [fundamentals](fundamentals)
+  - [shodan](fundamentals)
+  - [metasploit](fundamentals)
+  

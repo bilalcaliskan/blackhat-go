@@ -14,13 +14,18 @@ type Metasploit struct {
 	token string
 }
 
-func New(host, user, pass string) *Metasploit {
+func New(host, user, pass string) (*Metasploit, error) {
 	msf := &Metasploit{
 		host: host,
 		user: user,
 		pass: pass,
 	}
-	return msf
+
+	if err := msf.Login(); err != nil {
+		return nil, err
+	}
+
+	return msf, nil
 }
 
 type SessionListReq struct {
