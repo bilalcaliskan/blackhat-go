@@ -43,6 +43,11 @@ with HTTP APIs.
 
 For the coding exercises, check the subfolders in current directory with the following order:
   - [fundamentals](fundamentals)
-  - [shodan](fundamentals)
-  - [metasploit](fundamentals)
+  - [shodan](shodan)
+  - [metasploit](metasploit)
+  - [bing-metadata](bing-metadata)
   
+### SUMMARY
+This chapter introduced to you fundamental HTTP concepts in Go, which you used to create usable tools that interacted 
+with remote APIs, as well as to scrape arbitrary HTML data. In the next chapter, you’ll continue with the HTTP theme 
+by learning to create servers rather than clients.
