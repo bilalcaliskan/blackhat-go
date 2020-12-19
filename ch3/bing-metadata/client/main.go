@@ -2,15 +2,16 @@ package main
 
 import (
 	"archive/zip"
-	"blackhat-go/ch3/bing-metadata/metadata"
 	"bytes"
 	"fmt"
-	"github.com/PuerkitoBio/goquery"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+
+	"blackhat-go/ch3/bing-metadata/metadata"
+	"github.com/PuerkitoBio/goquery"
 )
 
 func handler(i int, s *goquery.Selection) {
@@ -24,6 +25,7 @@ func handler(i int, s *goquery.Selection) {
 	if err != nil {
 		return
 	}
+
 	buf, err := ioutil.ReadAll(res.Body)
 	if err != nil {
 		return
@@ -41,7 +43,7 @@ func handler(i int, s *goquery.Selection) {
 	}
 
 	log.Printf(
-		"%25s %25s - %s %s\n",
+		"%21s %s - %s %s\n",
 		cp.Creator,
 		cp.LastModifiedBy,
 		ap.Application,
@@ -50,7 +52,7 @@ func handler(i int, s *goquery.Selection) {
 
 func main() {
 	if len(os.Args) != 3 {
-		log.Fatalln("Missing required argument. Usage: main.go domain ext")
+		log.Fatalln("Missing required argument. Usage: main.go <domain> <ext>")
 	}
 	domain := os.Args[1]
 	filetype := os.Args[2]
@@ -60,12 +62,19 @@ func main() {
 		domain,
 		filetype,
 		filetype)
+
 	search := fmt.Sprintf("http://www.bing.com/search?q=%s", url.QueryEscape(q))
-	doc, err := goquery.NewDocument(search)
+	res, err := http.Get(search)
+	if err != nil {
+		return
+	}
+
+	doc, err := goquery.NewDocumentFromReader(res.Body)
 	if err != nil {
 		log.Panicln(err)
 	}
-
-	s := "html body div#b_content ol#b_results li.b_algo div.b_title h2"
+	defer res.Body.Close()
+	// TODO: Fix, not working
+	s := "html body div#b_content ol#b_results li.b_algo h2"
 	doc.Find(s).Each(handler)
 }
