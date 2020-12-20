@@ -380,3 +380,179 @@ response and stop execution if any credentials or session information were inval
 to do that.
 
 #### _Adding Authentication with Negroni_
+Before moving on, let’s modify our example from the previous section to demonstrate the use of `context`, which can 
+easily pass variables between functions. The example in [gorilla_with_negroni/main.go](gorilla_with_negroni/main.go) uses 
+negroni to add authentication middleware.
+```go
+import (
+    "context"
+    "fmt"
+    "net/http"
+
+    "github.com/gorilla/mux"
+    "github.com/urfave/negroni"
+)
+
+type badAuth struct { ❶
+    Username string
+    Password string
+}
+
+func (b *badAuth) ServeHTTP(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) { ❷
+    username := r.URL.Query().Get("username") ❸
+    password := r.URL.Query().Get("password")
+    if username != b.Username || password != b.Password {
+        http.Error(w, "Unauthorized", 401)
+        return ❹
+    }
+    ctx := context.WithValue(r.Context(), "username", username) ❺
+    r = r.WithContext(ctx) ❻
+    next(w, r)
+}
+
+func hello(w http.ResponseWriter, r *http.Request) {
+    username := r.Context().Value("username").(string) ❼
+    fmt.Fprintf(w, "Hi %s\n", username)
+}
+
+func main() {
+    r := mux.NewRouter()
+    r.HandleFunc("/hello", hello).Methods("GET")
+    n := negroni.Classic()
+    n.Use(&badAuth{
+        Username: "admin",
+        Password: "password",
+    })
+    n.UseHandler(r)
+    http.ListenAndServe(":8000", n)
+}
+```
+You’ve added new middleware, `badAuth`, that is going to simulate authentication, purely for demonstration purposes ❶. 
+This new type has two fields, `Username` and `Password`, and implements `negroni.Handler`, since it defines the three-parameter 
+version of the `ServeHTTP()` method ❷ we discussed previously. Inside the `ServeHTTP()` method, you first grab the 
+username and password from the request ❸, and then compare them to the fields you have. If the username and password are 
+incorrect, execution is stopped, and a 401 response is written to the requester.
+
+Notice that you return ❹ before calling `next()`. This prevents the remainder of the middleware chain from executing. 
+If the credentials are correct, you go through a rather verbose routine of adding the username to the request context. 
+You first call `context.WithValue()` to initialize the context from the request, setting a variable named username on 
+that context ❺. You then make sure the request uses your new context by calling `r.WithContext(ctx)` ❻. If you plan 
+on writing web applications with Go, you’ll want to become familiar with this pattern, as you’ll be using it a lot.
+
+In the `hello()` function, you get the username from the request context by using the `Context().Value(interface{})` function, 
+which itself returns an interface{}. Because you know it’s a string, you can use a type assertion here ❼. If you can’t 
+guarantee the type, or you can’t guarantee that the value will exist in the context, use a switch routine for conversion.
+
+Build and execute the code from above snippet and send a few requests to the server. Send some with both correct and 
+incorrect credentials. You should see the following output:
+```shell script
+$ curl -i http://localhost:8000/hello
+HTTP/1.1 401 Unauthorized
+Content-Type: text/plain; charset=utf-8
+X-Content-Type-Options: nosniff
+Date: Thu, 16 Jan 2020 20:41:20 GMT
+Content-Length: 13
+Unauthorized
+$ curl -i 'http://localhost:8000/hello?username=admin&password=password'
+HTTP/1.1 200 OK
+Date: Thu, 16 Jan 2020 20:41:05 GMT
+Content-Length: 9
+Content-Type: text/plain; charset=utf-8
+
+Hi admin
+```
+
+Making a request without credentials results in your middleware returning a 401 Unauthorized error. Sending the same 
+request with a valid set of credentials produces a super-secret greeting message accessible only to authenticated users.
+
+That was an awful lot to digest. Up to this point, your handler functions have solely used `fmt.FPrintf()` to write your 
+response to the `http.ResponseWriter` instance. In the next section, you’ll look at a more dynamic way of returning HTML 
+by using Go’s templating package.
+
+#### _Using Templates to Produce HTML Responses_
+Templates allow you to dynamically generate content, including HTML, with variables from Go programs. Many languages have 
+third-party packages that allow you to generate templates. Go has two templating packages, `text/template` and `html/template`. 
+In this chapter, you’ll use the HTML package, because it provides the contextual encoding you need.
+
+One of the fantastic things about Go’s package is that it’s contextually aware: it will encode your variable differently 
+depending on where the variable is placed in the template. For example, if you were to supply a string as a URL to an href 
+attribute, the string would be URL encoded, but the same string would be HTML encoded if it rendered within an HTML element.
+
+To create and use templates, you first define your template, which contains a placeholder to denote the dynamic contextual 
+data to render. Its syntax should look familiar to readers who have used `Jinja with Python`. When you render the template, 
+you pass to it a variable that’ll be used as this context. The variable can be a complex structure with several fields, or 
+it can be a primitive variable.
+
+Let’s work through a sample, shown in [template_example/main.go](template_example/main.go), that creates a simple template 
+and populates a placeholder with JavaScript. This is a contrived example that shows how to dynamically populate content 
+returned to the browser.
+```go
+   package main
+
+   import (
+       "html/template"
+       "os"
+   )
+
+❶ var x = `
+   <html>
+     <body>
+
+    ❷ Hello {{.}}
+     </body>
+   </html>
+   `
+
+   func main() {
+    ❸ t, err := template.New("hello").Parse(x)
+       if err != nil {
+           panic(err)
+       }
+    ❹ t.Execute(os.Stdout, "<script>alert('world')</script>")
+   }
+```
+
+The first thing you do is create a variable, named x, to store your HTML template ❶. Here you’re using a string embedded 
+in your code to define your template, but most of the time you’ll want to store your templates as separate files. Notice 
+that the template is nothing more than a simple HTML page. Inside the template, you define placeholders by using the 
+`{{variable-name}}` convention, where variable-name is the data element within your contextual data that you’ll want 
+to render ❷. Recall that this can be a struct or another primitive. In this case, you’re using a single period, which 
+tells the package that you want to render the entire context here. Since you’ll be working with a single string, this 
+is fine, but if you had a larger and more complex data structure, such as a struct, you could get only the fields you 
+want by calling past this period. For example, if you passed a struct with a Username field to the template, you could 
+render the field by using `{{.Username}}`.
+
+Next, in your `main()` function, you create a new template by calling `template.New(string)` ❸. Then you call `Parse(string)` 
+to ensure that the template is properly formatted and to parse it. Together, these two functions return a new pointer 
+to a Template.
+
+While this example uses only a single template, it’s possible to embed templates in other templates. When using multiple 
+templates, it’s important that you name them in order to be able to call them. Finally, you call `Execute(io.Writer, interface{})` ❹, 
+which processes the template by using the variable passed as the second argument and writes it to the provided `io.Writer`. 
+For demonstration purposes, you’ll use os.Stdout. The second variable you pass into the Execute() method is the context 
+that’ll be used for rendering the template.
+
+Running this produces HTML, and you should notice that the script tags and other nefarious characters that were provided 
+as part of your context are properly encoded. Neat-o!
+```shell script
+$ go build -o template_example
+$ ./template_example
+
+<html>
+  <body>
+    Hello &lt;script&gt;alert(&#39;world&#39;)&lt;/script&gt;
+  </body>
+</html>
+```
+
+We could say a lot more about templates. You can use logical operators with them; you can use them with loops and other 
+control structures. You can call built-in functions, and you can even define and expose arbitrary helper functions to 
+greatly expand the templating capabilities. Double neat-o! We recommend you dive in and research these possibilities. 
+They’re beyond the scope of this book, but are powerful.
+
+How about you step away from the basics of creating servers and handling requests and instead focus on something more 
+nefarious. Let’s create a credential harvester!
+
+For the coding exercises with tools, check the subfolders in current directory with the following order:
+  - [CREDENTIAL HARVESTING](credential-harvester/README.md)
+  - [KEYLOGGING WITH THE WEBSOCKET API](websocket_keylogger/README.md)
