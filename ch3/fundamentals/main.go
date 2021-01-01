@@ -17,22 +17,20 @@ type Status struct {
 
 func main() {
 	/*
-		Let’s begin the HTTP discussion by examining basic requests. Go’s net/http standard package contains several
-		convenience functions to quickly and easily send POST, GET, and HEAD requests, which are arguably the most
-		common HTTP verbs you’ll use. These functions take the following forms:
-			- Get(url string) (resp *Response, err error)
-			- Head(url string) (resp *Response, err error)
-	 		- Post(url string, bodyType string, body io.Reader) (resp *Response, err error)
-		Each function takes—as a parameter—the URL as a string value and uses it for the request’s destination. The Post()
-		function is slightly more complex than the Get() and Head() functions. Post() takes two additional
-		parameters: bodyType, which is a string value that you use for the Content-Type HTTP header (commonly
-		application/x-www-form-urlencoded) of the request body, and an io.Reader.
+			Let’s begin the HTTP discussion by examining basic requests. Go’s net/http standard package contains several
+			convenience functions to quickly and easily send POST, GET, and HEAD requests, which are arguably the most
+			common HTTP verbs you’ll use. These functions take the following forms:
+				- Get(url string) (resp *Response, err error)
+				- Head(url string) (resp *Response, err error)
+		 		- Post(url string, bodyType string, body io.Reader) (resp *Response, err error)
+			Each function takes—as a parameter—the URL as a string value and uses it for the request’s destination. The Post()
+			function is slightly more complex than the Get() and Head() functions. Post() takes two additional
+			parameters: bodyType, which is a string value that you use for the Content-Type HTTP header (commonly
+			application/x-www-form-urlencoded) of the request body, and an io.Reader.
 
-		Note that the POST request creates the request body from form values and sets the Content-Type header. In each
-		case, you must close the response body after you’re done reading data from it.
+			Note that the POST request creates the request body from form values and sets the Content-Type header. In each
+			case, you must close the response body after you’re done reading data from it.
 	*/
-
-
 
 	// Read and display response body
 	/*
@@ -65,8 +63,6 @@ func main() {
 		closed before you return it.
 	*/
 
-
-
 	// Parsing JSON Response as struct
 	/*
 		If you encounter a need to parse more structured data—and it’s likely that you will—you can read the response
@@ -89,12 +85,6 @@ func main() {
 	}
 	defer res.Body.Close()
 	log.Printf("%s -> %s\n", status.Status, status.Message)
-
-
-
-
-
-
 
 	resp, err = http.Head("https://www.google.com/robots.txt")
 	if err != nil {
@@ -132,9 +122,6 @@ func main() {
 	defer resp.Body.Close()
 	fmt.Println(resp.Status)
 
-
-
-
 	/*
 		To generate a request with one of these verbs, you can use the NewRequest() function to create the Request
 		struct, which you’ll subsequently send using the Client function’s Do() method. We promise that it’s simpler
@@ -157,7 +144,6 @@ func main() {
 		it’s sent to the server. You’ll learn some of the more relevant and applicable variants as you work through
 		practical examples throughout this chapter.
 	*/
-
 
 	req, err = http.NewRequest("PUT", "https://www.google.com/robots.txt", strings.NewReader(form.Encode()))
 	resp, err = client.Do(req)

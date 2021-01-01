@@ -221,3 +221,9 @@ finding a better presentation format that, for example, groups keystrokes by uni
 
 Your journey through credential harvesting is complete. We’ll end this chapter by presenting multiplexing HTTP 
 command-and-control connections.
+
+
+> **NOTE**  
+> I have modified the original example to run everything in one simple process. [public](public) folder will serve 
+> the html content. In the body of the html, there is a script line in the start of the body to establish websocket 
+> connection with the server.

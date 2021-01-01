@@ -35,7 +35,7 @@ func multiPortScanConcurrentlyUsingMultipleChannels(host, proto string) {
 	}()
 
 	for i := 0; i < 1024; i++ {
-		port := <- results
+		port := <-results
 		if port != 0 {
 			openPorts = append(openPorts, port)
 		}

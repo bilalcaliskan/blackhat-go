@@ -57,7 +57,7 @@ func runEchoServer() {
 		log.Fatalln("Unable to bind to port")
 	}
 	log.Println("Listening on 0.0.0.0:20080")
-	for  {
+	for {
 		// Wait for connection. Create net.Conn on connection established. It blocks execution as it awaits client connections
 		conn, err := listener.Accept()
 		log.Println("Received connection")
@@ -76,7 +76,7 @@ func runImprovedEchoServer() {
 		log.Fatalln("Unable to bind to port")
 	}
 	log.Println("Listening on 0.0.0.0:20081")
-	for  {
+	for {
 		// Wait for connection. Create net.Conn on connection established. It blocks execution as it awaits client connections
 		conn, err := listener.Accept()
 		log.Println("Received connection")
@@ -122,7 +122,6 @@ func main() {
 			- The handler goroutine, whose execution has been transferred to the echo(net.Conn) function, proceeds to run,
 			processing the data.
 	*/
-
 
 	// Improving the Code by Creating a Buffered Listener
 	/*

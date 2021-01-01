@@ -20,11 +20,11 @@ type OfficeAppProperty struct {
 }
 
 var OfficeVersions = map[string]string{
-"16": "2016",
-"15": "2013",
-"14": "2010",
-"12": "2007",
-"11": "2003",
+	"16": "2016",
+	"15": "2013",
+	"14": "2010",
+	"12": "2007",
+	"11": "2003",
 }
 
 func (a *OfficeAppProperty) GetMajorVersion() string {
@@ -49,12 +49,12 @@ func NewProperties(r *zip.Reader) (*OfficeCoreProperty, *OfficeAppProperty, erro
 		switch f.Name {
 		case "docProps/core.xml":
 			if err := process(f, &coreProps); err != nil {
-			return nil, nil, err
-		}
+				return nil, nil, err
+			}
 		case "docProps/app.xml":
 			if err := process(f, &appProps); err != nil {
-			return nil, nil, err
-		}
+				return nil, nil, err
+			}
 		default:
 			continue
 		}

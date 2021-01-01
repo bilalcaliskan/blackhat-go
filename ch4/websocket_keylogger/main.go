@@ -14,7 +14,6 @@ import (
 var (
 	upgrader = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
-
 	}
 
 	listenAddr string
@@ -59,5 +58,8 @@ func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/ws", serveWS)
 	r.HandleFunc("/k.js", serveFile)
+
+	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./public/")))
+	http.Handle("/", r)
 	log.Fatal(http.ListenAndServe(":8080", r))
 }

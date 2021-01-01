@@ -556,3 +556,4 @@ nefarious. Let’s create a credential harvester!
 For the coding exercises with tools, check the subfolders in current directory with the following order:
   - [CREDENTIAL HARVESTING](credential-harvester/README.md)
   - [KEYLOGGING WITH THE WEBSOCKET API](websocket_keylogger/README.md)
+  - [MULTIPLEXING COMMAND-AND-CONTROL](multiplexer/README.md)
