@@ -330,3 +330,203 @@ false-positives.
 > into the sequence number sent in the SYN+ACK response. If the server then receives a subsequent ACK response from 
 > the client with the incremented sequence number, the server is able to reconstruct the SYN queue entry using 
 > information encoded in the TCP sequence number and proceed as usual with the connection.
+
+When a target is using SYN cookies, how can you determine whether a service is listening on a port or a device is 
+falsely showing that the port is open? After all, in both cases, the TCP three-way handshake is completed. Most tools 
+and scanners (Nmap included) look at this sequence (or some variation of it, based on the scan type you’ve chosen) to 
+determine the status of the port. Therefore, you can’t rely on these tools to produce accurate results.
+
+However, if you consider what happens after you’ve established a connection—an exchange of data, perhaps in the form 
+of a service banner—you can deduce whether an actual service is responding. SYN-flood protections generally won’t 
+exchange packets beyond the initial three-way handshake unless a service is listening, so the presence of any additional 
+packets might indicate that a service exists.
+
+####_Checking TCP Flags_
+To account for SYN cookies, you have to extend your port-scanning capabilities to look beyond the three-way handshake 
+by checking to see whether you receive any additional packets from the target after you’ve established a connection. 
+You can accomplish this by sniffing the packets to see if any of them were transmitted with a TCP flag value indicative 
+of additional, legitimate service communications.
+
+TCP flags indicate information about the state of a packet transfer. If you look at the TCP specification, you’ll find 
+that the flags are stored in a single byte at position 14 in the packet’s header. Each bit of this byte represents a 
+single flag value. The flag is “on” if the bit at that position is set to 1, and “off” if the bit is set to 0. 
+below picture shows the positions of the flags in the byte, as per the TCP specification.
+
+**Bit**     7       6       5       4       3       2       1       0  
+**Flag**    CWR     ECE     URG     ACK     PSH     RST     SYN     FIN
+
+Once you know the positions of the flags you care about, you can create a filter that checks them. For example, you can 
+look for packets containing the following flags, which might indicate a listening service:
+  - ACK and FIN
+  - ACK
+  - ACK and PSH
+
+Because you have the ability to capture and filter certain packets by using the gopacket library, you can build a utility 
+that attempts to connect to a remote service, sniffs the packets, and displays only the services that communicate packets 
+with these TCP headers. Assume all other services are falsely “open” because of SYN cookies.
+
+####_Building the BPF Filter_
+Your BPF filter needs to check for the specific flag values that indicate packet transfer. The flag byte has the following 
+values if the flags we mentioned earlier are turned on:
+  - ACK and FIN: 00010001 (0x11)
+  - ACK: 00010000 (0x10)
+  - ACK and PSH: 00011000 (0x18)
+
+We included the hex equivalent of the binary value for clarity, as you’ll use the hex value in your filter.
+
+To summarize, you need to check the 14th byte (offset 13 for a 0-based index) of the TCP header, filtering only for 
+packets whose flags are 0x11, 0x10, or 0x18. Here’s what the BPF filter looks like:
+```shell script
+tcp[13] == 0x11 or tcp[13] == 0x10 or tcp[13] == 0x18
+```
+Excellent. You have your filter.
+
+####_Writing the Port Scanner_
+Now you’ll use the filter to build a utility that establishes a full TCP connection and inspects packets beyond the 
+three-way handshake to see whether other packets are transmitted, indicating that an actual service is listening. The 
+program is shown in [syn-flood/main.go](syn-flood/main.go). 
+```go
+var ( ❶
+    snaplen  = int32(320)
+    promisc  = true
+    timeout  = pcap.BlockForever
+    filter   = "tcp[13] == 0x11 or tcp[13] == 0x10 or tcp[13] == 0x18"
+    devFound = false
+    results  = make(map[string]int)
+)
+
+func capture(iface, target string) { ❷
+    handle, err := pcap.OpenLive(iface, snaplen, promisc, timeout)
+    if err != nil {
+        log.Panicln(err)
+    }
+
+    defer handle.Close()
+
+    if err := handle.SetBPFFilter(filter); err != nil {
+        log.Panicln(err)
+    }  
+
+    source := gopacket.NewPacketSource(handle, handle.LinkType())
+    fmt.Println("Capturing packets")
+    for packet := range source.Packets() {
+        networkLayer := packet.NetworkLayer() ❸
+        if networkLayer == nil {
+            continue
+        }
+        transportLayer := packet.TransportLayer()
+        if transportLayer == nil {
+            continue
+        }
+
+        srcHost := networkLayer.NetworkFlow().Src().String() ❹
+        srcPort := transportLayer.TransportFlow().Src().String()
+
+        if srcHost != target { ❺
+            continue
+        }
+        results[srcPort] += 1 ❻
+    }  
+}
+
+func main() {
+
+    if len(os.Args) != 4 {
+        log.Fatalln("Usage: main.go <capture_iface> <target_ip> <port1,port2,port3>")
+    }  
+
+    devices, err := pcap.FindAllDevs()
+    if err != nil {
+        log.Panicln(err)
+    }  
+
+    iface := os.Args[1]
+    for _, device := range devices {
+        if device.Name == iface {
+            devFound = true
+        }
+    }  
+    if !devFound {
+        log.Panicf("Device named '%s' does not exist\n", iface)
+    }  
+
+    ip := os.Args[2]
+    go capture(iface, ip) ❼
+    time.Sleep(1 * time.Second)
+
+    ports, err := explode(os.Args[3])
+    if err != nil {
+        log.Panicln(err)
+    }  
+
+    for _, port := range ports { ❽
+        target := fmt.Sprintf("%s:%s", ip, port)
+        fmt.Println("Trying", target)
+        c, err := net.DialTimeout("tcp", target, 1000*time.Millisecond) ❾
+        if err != nil {
+            continue
+        }
+        c.Close()
+    }
+    time.Sleep(2 * time.Second)
+
+    for port, confidence := range results { ❿
+        if confidence >= 1 {
+            fmt.Printf("Port %s open (confidence: %d)\n", port, confidence)
+        }
+    }
+}
+
+/* Extraneous code omitted for brevity */
+```
+
+Broadly speaking, your code will maintain a count of packets, grouped by port, to represent how confident you are 
+that the port is indeed open. You’ll use your filter to select only packets with the proper flags set. The greater 
+the count of matching packets, the higher your confidence that the service is listening on the port.
+
+Your code starts by defining several variables for use throughout ❶. These variables include your filter and a map 
+named results that you’ll use to track your level of confidence that the port is open. You’ll use target ports as 
+keys and maintain a count of matching packets as the map value.
+
+Next you define a function, `capture()`, that accepts the interface name and target IP for which you’re testing ❷. 
+The function itself bootstraps the packet capture much in the same way as previous examples. However, you must use 
+different code to process each packet. You leverage the gopacket functionality to extract the packet’s network and 
+transport layers ❸. If either of these layers is absent, you ignore the packet; that’s because the next step is to 
+inspect the source IP and port of the packet ❹, and if there’s no transport or network layer, you won’t have that 
+information. You then confirm that the packet source matches the IP address that you’re targeting ❺. If the packet 
+source and IP address don’t match, you skip further processing. If the packet’s source IP and port match your target, 
+you increment your confidence level for the port ❻. Repeat this process for each subsequent packet. Each time you get 
+a match, your confidence level increases.
+
+In your `main()` function, use a goroutine to call your `capture()` function ❼. Using a goroutine ensures that your 
+packet capture and processing logic runs concurrently without blocking. Meanwhile, your main() function proceeds to 
+parse your target ports, looping through them one by one ❽ and calling net.DialTimeout to attempt a TCP connection 
+against each ❾. Your goroutine is running, actively watching these connection attempts, looking for packets that 
+indicate a service is listening.
+
+After you’ve attempted to connect to each port, process all of your results by displaying only those ports that have 
+a confidence level of 1 or more (meaning at least one packet matches your filter for that port) ❿. The code includes 
+several calls to time.Sleep() to ensure you’re leaving adequate time to set up the sniffer and process packets.
+
+Let’s look at a sample run of the program:
+```shell script
+$ go build -o syn-flood && sudo ./syn-flood enp0s5 10.1.100.100
+80,443,8123,65530
+Capturing packets
+Trying 10.1.100.100:80
+Trying 10.1.100.100:443
+Trying 10.1.100.100:8123
+Trying 10.1.100.100:65530
+Port 80 open (confidence: 1)
+Port 443 open (confidence: 1)
+```
+
+The test successfully determines that both port 80 and 443 are open. It also confirms that no service is listening on 
+ports 8123 and 65530. (Note that we’ve changed the IP address in the example to protect the innocent.)
+
+You could improve the code in several ways. As learning exercises, we challenge you to add the following enhancements:
+  - Remove the network and transport layer logic and source checks from the capture() function. Instead, add additional 
+  parameters to the BPF filter to ensure that you capture only packets from your target IP and ports.
+  - Replace the sequential logic of port scanning with a concurrent alternative, similar to what we demonstrated in 
+  previous chapters. This will improve efficiency.
+  - Rather than limiting the code to a single target IP, allow the user to supply a list of IPs or network blocks.
