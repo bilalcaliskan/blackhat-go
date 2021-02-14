@@ -237,3 +237,150 @@ results in a valid SQL statement that, assuming one or more rows exist in the da
 in the preceding pseudocode example.
 
 ##### Building the SQL Injection Fuzzer
+The intent of your fuzzer won’t be to generate a syntactically valid SQL statement. Quite the opposite. 
+You’ll want to break the query such that the malformed syntax yields an error by the backend database, 
+as the O’Doyle example just demonstrated. For this, you’ll send various SQL meta-characters as input.
+
+The first order of business is to analyze the target request. By inspecting the HTML source code, using 
+an intercepting proxy, or capturing network packets with Wireshark, you determine that the HTTP request 
+submitted for the login portal resembles the following:
+```shell
+POST /WebApplication/login.jsp HTTP/1.1
+Host: 10.0.1.20:8080
+User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:54.0) Gecko/20100101 Firefox/54.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 35
+Referer: http://10.0.1.20:8080/WebApplication/
+Cookie: JSESSIONID=2D55A87C06A11AAE732A601FCB9DE571
+Connection: keep-alive
+Upgrade-Insecure-Requests: 1
+
+username=someuser&password=somepass
+```
+
+The login form sends a POST request to `http://10.0.1.20:8080/WebApplication/login.jsp`. There are two 
+form parameters: `username` and `password`. For this example, we’ll limit the fuzzing to the username 
+field for brevity. The code itself is fairly compact, consisting of a few loops, some regular expressions, 
+and the creation of an HTTP request. It’s shown in [http-fuzz/main.go](http-fuzz/main.go):
+```go
+func main() {
+ ❶ payloads := []string{
+        "baseline",
+        ")",
+        "(",
+        "\"",
+        "'",
+    }  
+
+ ❷ sqlErrors := []string{
+        "SQL",
+        "MySQL",
+        "ORA-",
+        "syntax",
+    }  
+
+    errRegexes := []*regexp.Regexp{}
+    for _, e := range sqlErrors {
+     ❸ re := regexp.MustCompile(fmt.Sprintf(".*%s.*", e))
+        errRegexes = append(errRegexes, re)
+    }  
+
+ ❹ for _, payload := range payloads {
+        client := new(http.Client)
+    ❺ body := []byte(fmt.Sprintf("username=%s&password=p", payload))
+    ❻ req, err := http.NewRequest(
+           "POST",
+           "http://10.0.1.20:8080/WebApplication/login.jsp",
+           bytes.NewReader(body),
+        )  
+        if err != nil {
+            log.Fatalf("[!] Unable to generate request: %s\n", err)
+        }  
+        req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+        resp, err := client.Do(req)
+        if err != nil {
+            log.Fatalf("[!] Unable to process response: %s\n", err)
+        }  
+     ❼ body, err = ioutil.ReadAll(resp.Body)
+        if err != nil {
+            log.Fatalf("[!] Unable to read response body: %s\n", err)
+        }  
+        resp.Body.Close()
+
+     ❽ for idx, re := range errRegexes {
+         ❾ if re.MatchString(string(body)) {
+                fmt.Printf(
+                    "[+] SQL Error found ('%s') for payload: %s\n",
+                    sqlErrors[idx],
+                    payload,
+                )
+                break
+            }  
+        }  
+    }  
+}
+```
+
+The code begins by defining a slice of payloads you want to attempt ❶. This is your fuzzing list that 
+you’ll supply later as the value of the username request parameter. In the same vein, you define a slice 
+of strings that represent keywords within an SQL error message ❷. These will be the values you’ll search 
+for in the HTTP response body. The presence of any of these values is a strong indicator that an SQL 
+error message is present. You could expand on both of these lists, but they’re adequate datasets for 
+this example.
+
+Next, you perform some preprocessing work. For each of the error keywords you wish to search for, you 
+build and compile a regular expression ❸. You do this work outside your main HTTP logic so you don’t 
+have to create and compile these regular expressions multiple times, once for each payload. A minor 
+optimization, no doubt, but good practice nonetheless. You’ll use these compiled regular expressions 
+to populate a separate slice for use later.
+
+Next comes the core logic of the fuzzer. You loop through each of the payloads ❹, using each to build 
+an appropriate HTTP request body whose username value is your current payload ❺. You use the resulting 
+value to build an HTTP POST request ❻, targeting your login form. You then set the Content-Type header 
+and send the request by calling client.Do(req).
+
+Notice that you send the request by using the long-form process of creating a client and an individual 
+request and then calling `client.Do()`. You certainly could have used Go’s `http.PostForm()` function 
+to achieve the same behavior more concisely. However, the more verbose technique gives you more granular 
+control over HTTP header values. Although in this example you’re setting only the Content-Type header, 
+it’s not uncommon to set additional header values when making HTTP requests (such as User-Agent, Cookie, 
+and others). You can’t do this with http.PostForm(), so going the long route will make it easier to add any 
+necessary HTTP headers in the future, particularly if you’re ever interested in fuzzing the headers themselves.
+
+Next, you read the HTTP response body by using ioutil.ReadAll() ❼. Now that you have the body, you loop 
+through all of your precompiled regular expressions ❽, testing the response body for the presence of 
+your SQL error keywords ❾. If you get a match, you probably have a SQL injection error message. The program will 
+log details of the payload and error to the screen and move onto the next iteration of the loop.
+
+Run your code to confirm that it successfully identifies a SQL injection flaw in a vulnerable login form. 
+If you supply the username value with a single quotation mark, you’ll get the error indicator SQL, as shown here:
+```shell
+$ go run main.go
+[+] SQL Error found ('SQL') for payload: '
+```
+
+> Please refer [here](https://www.acunetix.com/websitesecurity/sql-injection2/#:~:text=Time%2Dbased%20SQL%20Injection%20is,query%20is%20TRUE%20or%20FALSE.) for 
+> different types of SQL Injection
+
+We encourage you to try the following exercises to help you better understand the code, appreciate the nuances 
+of HTTP communications, and improve your ability to detect SQL injection:
+  - Update the code to test for time-based SQL injection. To do this, you’ll have to send various payloads 
+    that introduce a time delay when the backend query executes. You’ll need to measure the round-trip 
+    time and compare it against a baseline request to deduce whether SQL injection is present.
+  - Update the code to test for boolean-based blind SQL injection. Although you can use different indicators 
+    for this, a simple way is to compare the HTTP response code against a baseline response. A deviation 
+    from the baseline response code, particularly receiving a response code of 500 (internal server error), 
+    may be indicative of SQL injection.
+  - Rather than relying on Go’s net.http package to facilitate communications, try using the net package to 
+    dial a raw TCP connection. When using the net package, you’ll need to be aware of the Content-Length 
+    HTTP header, which represents the length of the message body. You’ll need to calculate this length correctly 
+    for each request because the body length may change. If you use an invalid length value, the server will 
+    likely reject the request.
+
+In the next section, we’ll show you how to port exploits to Go from other languages, such as Python or C.
+
+
+### Porting Exploits To Go
