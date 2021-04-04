@@ -1,8 +1,8 @@
 package main
 
 import (
-	"blackhat-go/ch3/shodan/shodan"
 	"fmt"
+	"github.com/bilalcaliskan/blackhat-go/ch3/shodan/shodan"
 	"log"
 	"os"
 )

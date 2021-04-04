@@ -4,14 +4,13 @@ import (
 	"archive/zip"
 	"bytes"
 	"fmt"
+	"github.com/PuerkitoBio/goquery"
+	"github.com/bilalcaliskan/blackhat-go/ch3/bing-metadata/metadata"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
-
-	"blackhat-go/ch3/bing-metadata/metadata"
-	"github.com/PuerkitoBio/goquery"
 )
 
 func handler(i int, s *goquery.Selection) {

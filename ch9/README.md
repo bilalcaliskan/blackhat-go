@@ -379,8 +379,3 @@ of HTTP communications, and improve your ability to detect SQL injection:
     HTTP header, which represents the length of the message body. You’ll need to calculate this length correctly 
     for each request because the body length may change. If you use an invalid length value, the server will 
     likely reject the request.
-
-In the next section, we’ll show you how to port exploits to Go from other languages, such as Python or C.
-
-
-### Porting Exploits To Go

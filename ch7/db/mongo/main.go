@@ -1,11 +1,10 @@
 package main
 
 import (
-	"blackhat-go/ch7/db/dbminer"
-	"os"
-
+	"github.com/bilalcaliskan/blackhat-go/ch7/db/dbminer"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
+	"os"
 )
 
 type MongoMiner struct {

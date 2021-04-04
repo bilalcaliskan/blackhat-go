@@ -1,9 +1,9 @@
 package main
 
 import (
-	"blackhat-go/ch7/db/dbminer"
 	"database/sql"
 	"fmt"
+	"github.com/bilalcaliskan/blackhat-go/ch7/db/dbminer"
 	"log"
 	"os"
 )

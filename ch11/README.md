@@ -1,0 +1,209 @@
+# Implementing And Attacking Cryptography
+
+A conversation about security isn’t complete without exploring cryptography. When organizations use cryptographic practices, 
+they can help conserve the integrity, confidentiality, and authenticity of their information and systems alike. As a tool 
+developer, you’d likely need to implement cryptographic features, perhaps for SSL/TLS communications, mutual authentication, 
+symmetric-key cryptography, or password hashing. But developers often implement cryptographic functions insecurely, which 
+means the offensive-minded can exploit these weaknesses to compromise sensitive, valuable data, such as social security or 
+credit card numbers.
+
+This chapter demonstrates various implementations of cryptography in Go and discusses common weaknesses you can exploit. 
+Although we provide introductory information for the different cryptographic functions and code blocks, we’re not attempting 
+to explore the nuances of cryptographic algorithms or their mathematical foundations. That, frankly, is far beyond our 
+interest in (or knowledge of) cryptography.
+
+### Reviewing Basic Cryptography Concepts
+Before we explore crypto in Go, let’s discuss a few basic cryptography concepts. We’ll make this short to keep you from 
+falling into a deep sleep.
+
+First, encryption (for the purposes of maintaining confidentiality) is just one of the tasks of cryptography. `Encryption`, 
+generally speaking, is a two-way function with which you can scramble data and subsequently unscramble it to retrieve the 
+initial input. The process of encrypting data renders it meaningless until it’s been decrypted.
+
+Both encryption and decryption involve passing the data and an accompanying key into a cryptographic function. The function 
+outputs either the encrypted data (called ciphertext) or the original, readable data (called cleartext). Various algorithms 
+exist to do this. Symmetric algorithms use the `same key` during the encryption and decryption processes, whereas asymmetric 
+algorithms use `different keys` for encryption and decryption. You might use encryption to protect data in transit or to 
+store sensitive information, such as credit card numbers, to decrypt later, perhaps for convenience during a future purchase 
+or for fraud monitoring.
+
+On the other hand, hashing is a one-way process for mathematically scrambling data. You can pass sensitive information into 
+a hashing function to produce a fixed-length output. When you’re working with strong algorithms, such as those in the [SHA-2 family](https://en.wikipedia.org/wiki/SHA-2), 
+the probability that different inputs produce the same output is extremely low.
+
+That is, there is a low likelihood of a collision. Because they’re nonreversible, hashes are commonly used as an alternative 
+to storing cleartext passwords in a database or to perform integrity checking to determine whether data has been changed. If 
+you need to obscure or randomize the outputs for two identical inputs, you use a `salt`, which is a random value used to 
+differentiate two identical inputs during the hashing process. `Salts are common for password storage because they allow 
+multiple users who coincidentally use identical passwords to still have different hash values.`
+
+You can read more about Hashing and salt in below articles:
+  - https://auth0.com/blog/adding-salt-to-hashing-a-better-way-to-store-passwords/
+  - https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#salting
+
+Cryptography also provides a means for authenticating messages. A [message authentication code (MAC)](https://en.wikipedia.org/wiki/Message_authentication_code) is the output produced 
+from a special one-way cryptographic function. This function consumes the data itself, a secret key, and an initialization vector, 
+and produces an output unlikely to have a collision. The sender of a message performs the function to generate a MAC and then 
+includes the MAC as part of the message. The receiver locally calculates the MAC and compares it to the MAC they received. 
+A match indicates that the sender has the correct secret key (that is, that the sender is authentic) and that the message was 
+not changed (the integrity has been maintained).
+
+### Understanding The Standart Crypto Library
+The beautiful thing about implementing crypto in Go is that the majority of cryptographic features you’ll likely use are 
+part of the standard library. Whereas other languages commonly rely on OpenSSL or other third-party libraries, Go’s crypto 
+features are part of the official repositories. This makes implementing crypto relatively straightforward, as you won’t have 
+to install clumsy dependencies that’ll pollute your development environment. There are two separate repositories.
+
+The self-contained crypto package contains a variety of subpackages used for the most common cryptographic tasks and algorithms. 
+For example, you could use the aes, des, and rc4 subpackages for implementing symmetric-key algorithms; the dsa and rsa subpackages 
+for asymmetric encryption; and the md5, sha1, sha256, and sha512 subpackages for hashing. This is not an exhaustive list; 
+additional subpackages exist for other crypto functions, as well.
+
+In addition to the standard crypto package, Go has an official, extended package that contains a variety of supplementary 
+crypto functionality: [golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto). The functionality within includes 
+additional hashing algorithms, encryption ciphers, and utilities. For example, the package contains a bcrypt subpackage for 
+bcrypt hashing (a better, more secure alternative for hashing passwords and sensitive data), acme/autocert for generating 
+legitimate certificates, and SSH subpackages to facilitate communications over the SSH protocol.
+
+The only real difference between the built-in crypto and supplementary golang.org/x/crypto packages is that the crypto 
+package adheres to more stringent compatibility requirements. Also, if you wish to use any of the golang.org/x/crypto 
+subpackages, you’ll first need to install the package by entering the following:
+```shell
+$ go get -u golang.org/x/crypto/bcrypt
+```
+For a complete listing of all the functionality and subpackages within the official Go crypto packages, check out the official 
+documentation at https://golang.org/pkg/crypto/ and https://godoc.org/golang.org/x/crypto/.
+
+The next sections delve into various crypto implementations. You’ll see how to use Go’s crypto functionality to do some 
+nefarious things, such as crack password hashes, decrypt sensitive data by using a static key, and brute-force weak 
+encryption ciphers. You’ll also use the functionality to create tools that use TLS to protect your in-transit communications, 
+check the integrity and authenticity of data, and perform mutual authentication.
+
+### Exploring Hashing
+Hashing, as we mentioned previously, is a one-way function used to produce a fixed-length, probabilistically unique output 
+based on a variable-length input. You can’t reverse this hash value to retrieve the original input source. Hashes are often 
+used to store information whose original, cleartext source won’t be needed for future processing or to track the integrity 
+of data. For example, it’s bad practice and generally unnecessary to store the cleartext version of the password; instead, 
+you’d store the hash (salted, ideally, to ensure randomness between duplicate values).
+
+To demonstrate hashing in Go, we’ll look at two examples. The first attempts to crack a given [MD5](https://en.wikipedia.org/wiki/MD5) 
+or [SHA-512](https://en.wikipedia.org/wiki/SHA-2) hash by using an offline dictionary attack. The second example demonstrates 
+an implementation of [bcrypt](https://en.wikipedia.org/wiki/Bcrypt). As mentioned previously, bcrypt is a more secure algorithm 
+for hashing sensitive data such as passwords. The algorithm also contains a feature that reduces its speed, making it harder 
+to crack passwords.
+
+#### _Cracking an MD5 or SHA-256 Hash_
+[hashes/main.go](hashes/main.go) shows the hash-cracking code. Since hashes aren’t directly reversible, the code instead 
+tries to guess the cleartext value of the hash by generating its own hashes of common words, taken from a word list, and 
+then comparing the resulting hash value with the hash you have in hand. If the two hashes match, you’ve likely guessed the 
+cleartext value.
+```go
+ ❶ var md5hash = "77f62e3524cd583d698d51fa24fdff4f"
+   var sha256hash =
+   "95a5e1547df73abdd4781b6c9e55f3377c15d08884b11738c2727dbd887d4ced"
+
+   func main() {
+       f, err := os.Open("wordlist.txt")❷
+       if err != nil {
+           log.Fatalln(err)
+       }  
+       defer f.Close()
+
+    ❸ scanner := bufio.NewScanner(f)
+       for scanner.Scan() {
+           password := scanner.Text()
+           hash := fmt.Sprintf("%x", md5.Sum([]byte(password))❹)
+        ❺ if hash == md5hash {
+               fmt.Printf("[+] Password found (MD5): %s\n", password)
+           }  
+
+           hash = fmt.Sprintf("%x", sha256.Sum256([]byte(password))❻)
+        ❼ if hash == sha256hash {
+               fmt.Printf("[+] Password found (SHA-256): %s\n", password)
+           }  
+       }  
+
+       if err := scanner.Err(); err != nil {
+           log.Fatalln(err)
+       }  
+   }
+```
+You start by defining two variables ❶ that hold the target hash values. One is an MD5 hash, and the other is a SHA-256. 
+Imagine that you acquired these two hashes as part of post-exploitation and you’re trying to determine the inputs (the 
+cleartext passwords) that produced them after being run through the hashing algorithm. You can often determine the algorithm 
+by inspecting the length of the hash itself. When you find a hash that matches the target, you’ll know you have the correct input.
+
+The list of inputs you’ll try exists in a dictionary file you’ll have created earlier. Alternatively, a Google search can 
+help you find dictionary files for commonly used passwords. To check the MD5 hash, you open the dictionary file ❷ and read 
+it, line by line, by creating a bufio.Scanner on the file descriptor ❸. Each line consists of a single password value that 
+you wish to check. You pass the current password value into a function named md5.Sum(input []byte) ❹. This function produces 
+the MD5 hash value as raw bytes, so you use the fmt.Sprintf() function with the format string %x to convert it to a 
+hexadecimal string. After all, your md5hash variable consists of a hexadecimal string representation of the target hash. 
+Converting your value ensures that you can then compare the target and calculated hash values ❺. If these hashes match, 
+the program displays a success message to stdout.
+
+> **REMARK:**  
+> Each hexadecimal digit represents four bits (binary digits).
+
+You perform a similar process to calculate and compare SHA-256 hashes. The implementation is fairly similar to the MD5 code. 
+The only real difference is that the sha256 package contains additional functions to calculate various SHA hash lengths. 
+Rather than calling sha256.Sum() (a function that doesn’t exist), you instead call sha256.Sum256(input []byte) ❻ to force 
+the hash to be calculated using the SHA-256 algorithm. Much as you did in the MD5 example, you convert your raw bytes to a 
+hex string and compare the SHA-256 hashes to see whether you have a match ❼.
+
+#### _Implementing bcrypt_
+The next example shows how to use bcrypt to encrypt and authenticate passwords. Unlike SHA and MD5, bcrypt was designed 
+for password hashing, making it a better option for application designers than the SHA or MD5 families. It includes a salt 
+by default, as well as a cost factor that makes running the algorithm more resource-intensive. This cost factor controls 
+the number of iterations of the internal crypto functions, increasing the time and effort needed to crack a password hash. 
+Although the password can still be cracked using a dictionary or brute-force attack, the cost (in time) increases significantly, 
+discouraging cracking activities during time-sensitive post-exploitation. It’s also possible to increase the cost over time 
+to counter the advancement of computing power. This makes it adaptive to future cracking attacks.
+
+[bcrypt/main.go](bcrypt/main.go) creates a bcrypt hash and then validates whether a cleartext password matches a given bcrypt hash.
+```go
+   import (
+       "log"
+       "os"
+    ❶ "golang.org/x/crypto/bcrypt"
+   )
+
+❷ var storedHash = "$2a$10$Zs3ZwsjV/nF.KuvSUE.5WuwtDrK6UVXcBpQrH84V8q3Opg1yNdWLu"
+
+   func main() {
+       var password string
+       if len(os.Args) != 2 {
+           log.Fatalln("Usage: bcrypt password")
+       }  
+       password = os.Args[1]
+
+    ❸ hash, err := bcrypt.GenerateFromPassword(
+           []byte(password),
+           bcrypt.DefaultCost,
+       )
+       if err != nil {
+           log.Fatalln(err)
+       }  
+       log.Printf("hash = %s\n", hash)
+
+    ❹ err = bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(password))
+       if err != nil {
+           log.Println("[!] Authentication failed")
+           return
+       }  
+       log.Println("[+] Authentication successful")
+   }
+```
+
+For most of the code samples in this book, we’ve omitted the package imports. We’ve included them in this example to explicitly 
+show that you’re using the supplemental Go package, golang.org/x/crypto/bcrypt ❶, because Go’s built-in crypto package 
+doesn’t contain the bcrypt functionality. You then initialize a variable, storedHash ❷, that holds a precomputed, encoded 
+bcrypt hash. This is a contrived example; rather than wiring our sample code up to a database to get a value, we’ve opted 
+to hardcode a value for demonstrative purposes. The variable could represent a value that you’ve found in a database row 
+that stores user authentication information for a frontend web application, for instance.
+
+Next, you’ll produce a bcrypt-encoded hash from a cleartext password value. The main function reads a password value as a 
+command line argument and proceeds to call two separate bcrypt functions. The first function, bcrypt.GenerateFromPassword() ❸, 
+accepts two parameters: a byte slice representing the cleartext password and a cost value. In this example, you’ll pass the 
+constant variable bcrypt.DefaultCost to use the package’s default cost, which is 10 at the time of this writing. The function 
+returns the encoded hash value and any errors produced.
