@@ -207,3 +207,37 @@ command line argument and proceeds to call two separate bcrypt functions. The fi
 accepts two parameters: a byte slice representing the cleartext password and a cost value. In this example, you’ll pass the 
 constant variable bcrypt.DefaultCost to use the package’s default cost, which is 10 at the time of this writing. The function 
 returns the encoded hash value and any errors produced.
+
+The second bcrypt function you call is bcrypt.CompareHashAndPassword() ❹, which does the hash comparison for you behind 
+the scenes. It accepts a bcrypt-encoded hash and a cleartext password as byte slices. The function parses the encoded hash 
+to determine the cost and salt. It then uses these values with the cleartext password value to generate a bcrypt hash. If 
+this resulting hash matches the hash extracted from the encoded storedHash value, you know the provided password matches 
+what was used to create the `storedHash`.
+
+This is the same method you used to perform your password cracking against SHA and MD5—run a given password through the 
+hashing function and compare the result with the stored hash. Here, rather than explicitly comparing the resulting hashes 
+as you did for SHA and MD5, you check whether bcrypt.CompareHashAndPassword() returns an error. If you see an error, you 
+know the computed hashes, and therefore the passwords used to compute them, do not match.
+
+The following are two sample program runs. The first shows the output for an incorrect password:
+```shell
+$ go run main.go someWrongPassword
+2020/08/25 08:44:01 hash = $2a$10$YSSanGl8ye/NC7GDyLBLUO5gE/ng51l9TnaB1zTChWq5g9i09v0AC
+2020/08/25 08:44:01 [!] Authentication failed
+```
+
+The second shows the output for the correct password:
+```shell
+$ go run main.go someC0mpl3xP@ssw0rd
+2020/08/25 08:39:29 hash = $2a$10$XfeUk.wKeEePNAfjQ1juXe8RaM/9EC1XZmqaJ8MoJB29hZRyuNxz.
+2020/08/25 08:39:29 [+] Authentication successful
+```
+
+Those of you with a keen eye for detail may notice that the hash value displayed for your successful authentication does 
+not match the value you hardcoded for your storedHash variable. Recall, if you will, that your code is calling two separate 
+functions. The `GenerateFromPassword()` function produces the encoded hash by using a random salt value. Given different 
+salts, the same password will produce different resulting hashes. Hence the difference. The `CompareHashAndPassword()` function 
+performs the hashing algorithm by using the same salt and cost as the stored hash, so the resulting hash is identical to 
+the one in the storedHash variable.
+
+### Authenticating Messages
