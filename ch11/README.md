@@ -241,3 +241,19 @@ performs the hashing algorithm by using the same salt and cost as the stored has
 the one in the storedHash variable.
 
 ### Authenticating Messages
+Let’s now turn our focus to message authentication. When exchanging messages, you need to validate both the integrity of 
+data and the authenticity of the remote service to make sure that the data is authentic and hasn’t been tampered with. 
+Was the message altered during transmission by an unauthorized source? Was the message sent by an authorized sender or was 
+it forged by another entity?
+
+You can address these questions by using Go’s [crypto/hmac](https://golang.org/pkg/crypto/hmac/) package, which implements 
+the [Keyed-Hash Message Authentication Code (HMAC)](https://en.wikipedia.org/wiki/HMAC) standard. HMAC is a cryptographic 
+algorithm that allows us to check for message tampering and verify the identity of the source. It uses a hashing function 
+and consumes a shared secret key, which only the parties authorized to produce valid messages or data should possess. An 
+attacker who does not possess this shared secret cannot reasonably forge a valid HMAC value.
+
+Luckily for us Gophers, the crypto/hmac package makes it fairly easy to implement HMAC functionality in a secure fashion. 
+Let’s look at an implementation. Note that the following program is much simpler than a typical use case, which would likely 
+involve some type of network communications and messaging. In most cases, you’d calculate the HMAC on HTTP request parameters 
+or some other message transmitted over a network. In the example shown in Listing 11-3, we’re omitting the client-server 
+communications and focusing solely on the HMAC functionality.
