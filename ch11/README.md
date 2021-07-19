@@ -21,7 +21,7 @@ generally speaking, is a two-way function with which you can scramble data and s
 initial input. The process of encrypting data renders it meaningless until it’s been decrypted.
 
 Both encryption and decryption involve passing the data and an accompanying key into a cryptographic function. The function 
-outputs either the encrypted data (called ciphertext) or the original, readable data (called cleartext). Various algorithms 
+outputs either the encrypted data `(called ciphertext)` or the original, readable data `(called cleartext)`. Various algorithms 
 exist to do this. Symmetric algorithms use the `same key` during the encryption and decryption processes, whereas asymmetric 
 algorithms use `different keys` for encryption and decryption. You might use encryption to protect data in transit or to 
 store sensitive information, such as credit card numbers, to decrypt later, perhaps for convenience during a future purchase 
